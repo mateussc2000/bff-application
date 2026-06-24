@@ -1,28 +1,30 @@
 package com.bff.application.controller;
 
-import com.bff.application.exception.ResourceNotFoundException;
-import com.bff.application.model.dto.ProductRequest;
-import com.bff.application.model.dto.ProductResponse;
+import com.bff.application.exception.NotFoundException;
+import com.bff.application.exception.ValidationException;
+import com.bff.application.facade.ProductFacade;
+import com.bff.application.model.dto.response.PaginatedResponse;
+import com.bff.application.model.dto.response.ProductDetailResponse;
+import com.bff.application.model.dto.response.ProductResponse;
+import com.bff.application.enums.ProductStatusEnum;
 import com.bff.application.service.ProductService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ProductController.class)
+@Import(com.bff.application.handler.GlobalExceptionHandler.class)
 class ProductControllerTest {
 
     @Autowired
@@ -31,119 +33,102 @@ class ProductControllerTest {
     @MockitoBean
     private ProductService productService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @MockitoBean
+    private ProductFacade productFacade;
 
     private ProductResponse productResponse;
-    private ProductRequest productRequest;
+    private ProductDetailResponse productDetailResponse;
 
     @BeforeEach
     void setUp() {
         productResponse = ProductResponse.builder()
                 .id(1L)
-                .name("Test Product")
-                .description("Test Description")
-                .price(99.99)
-                .createdAt(LocalDateTime.now())
+                .name("Laptop Pro 15")
+                .price(2499.99)
+                .status(ProductStatusEnum.DONE)
                 .build();
 
-        productRequest = ProductRequest.builder()
-                .name("Test Product")
-                .description("Test Description")
-                .price(99.99)
+        productDetailResponse = ProductDetailResponse.builder()
+                .id(1L)
+                .name("Laptop Pro 15")
+                .description("High-performance laptop")
+                .price(2499.99)
+                .status(ProductStatusEnum.DONE)
+                .createdAt("2024-01-10T08:00:00")
                 .build();
     }
 
     @Test
-    void findAll_shouldReturn200WithProducts() throws Exception {
-        when(productService.findAll()).thenReturn(List.of(productResponse));
+    void listProducts_shouldReturn200WithProducts() throws Exception {
+        when(productService.listProducts(null)).thenReturn(List.of(productResponse));
 
         mockMvc.perform(get("/api/v1/products"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].name").value("Test Product"));
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.data[0].name").value("Laptop Pro 15"));
+
+        verify(productFacade).validateListParams(null);
     }
 
     @Test
-    void findAll_withNameFilter_shouldCallFindByName() throws Exception {
-        when(productService.findByName("Test")).thenReturn(List.of(productResponse));
+    void listProducts_withNameFilter_shouldPassNameToService() throws Exception {
+        when(productService.listProducts("Laptop")).thenReturn(List.of(productResponse));
 
-        mockMvc.perform(get("/api/v1/products").param("name", "Test"))
+        mockMvc.perform(get("/api/v1/products").param("name", "Laptop"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].name").value("Test Product"));
+                .andExpect(jsonPath("$.data[0].name").value("Laptop Pro 15"));
 
-        verify(productService).findByName("Test");
+        verify(productService).listProducts("Laptop");
     }
 
     @Test
-    void findById_shouldReturn200_whenFound() throws Exception {
-        when(productService.findById(1L)).thenReturn(productResponse);
+    void listProducts_whenFacadeThrowsValidation_shouldReturn400() throws Exception {
+        doThrow(new ValidationException("'name' must not exceed 100 characters"))
+                .when(productFacade).validateListParams(any());
+
+        mockMvc.perform(get("/api/v1/products").param("name", "x".repeat(101)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.error.code").value("ERR-009"));
+    }
+
+    @Test
+    void listProductsPaginated_shouldReturn200WithPagination() throws Exception {
+        PaginatedResponse<ProductResponse> paginated = PaginatedResponse.<ProductResponse>builder()
+                .content(List.of(productResponse))
+                .page(0).size(10).totalElements(1).totalPages(1).last(true)
+                .build();
+        when(productService.listProductsPaginated(0, 10, null)).thenReturn(paginated);
+
+        mockMvc.perform(get("/api/v1/products/paginated"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].name").value("Laptop Pro 15"));
+    }
+
+    @Test
+    void getProductDetail_shouldReturn200WithDetail() throws Exception {
+        when(productService.getProductDetail(1L)).thenReturn(productDetailResponse);
 
         mockMvc.perform(get("/api/v1/products/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1));
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.description").value("High-performance laptop"));
+
+        verify(productFacade).validateDetailParams(1L);
     }
 
     @Test
-    void findById_shouldReturn404_whenNotFound() throws Exception {
-        when(productService.findById(99L)).thenThrow(new ResourceNotFoundException("Product", 99L));
+    void getProductDetail_whenNotFound_shouldReturn404() throws Exception {
+        when(productService.getProductDetail(99L))
+                .thenThrow(new NotFoundException("Product not found with id: 99"));
 
         mockMvc.perform(get("/api/v1/products/99"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false));
-    }
-
-    @Test
-    void create_shouldReturn201_whenValid() throws Exception {
-        when(productService.create(any(ProductRequest.class))).thenReturn(productResponse);
-
-        mockMvc.perform(post("/api/v1/products")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(productRequest)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.name").value("Test Product"));
-    }
-
-    @Test
-    void create_shouldReturn400_whenInvalid() throws Exception {
-        ProductRequest invalidRequest = ProductRequest.builder()
-                .name("")
-                .price(-10.0)
-                .build();
-
-        mockMvc.perform(post("/api/v1/products")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void update_shouldReturn200_whenValid() throws Exception {
-        when(productService.update(eq(1L), any(ProductRequest.class))).thenReturn(productResponse);
-
-        mockMvc.perform(put("/api/v1/products/1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(productRequest)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-    }
-
-    @Test
-    void delete_shouldReturn200_whenFound() throws Exception {
-        doNothing().when(productService).delete(1L);
-
-        mockMvc.perform(delete("/api/v1/products/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-    }
-
-    @Test
-    void delete_shouldReturn404_whenNotFound() throws Exception {
-        doThrow(new ResourceNotFoundException("Product", 99L)).when(productService).delete(99L);
-
-        mockMvc.perform(delete("/api/v1/products/99"))
-                .andExpect(status().isNotFound());
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.error.code").value("ERR-002"));
     }
 
 }

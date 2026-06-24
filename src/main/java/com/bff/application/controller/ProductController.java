@@ -1,59 +1,73 @@
 package com.bff.application.controller;
 
-import com.bff.application.model.dto.ApiResponse;
-import com.bff.application.model.dto.ProductRequest;
-import com.bff.application.model.dto.ProductResponse;
+import com.bff.application.facade.ProductFacade;
+import com.bff.application.model.dto.response.PaginatedResponse;
+import com.bff.application.model.dto.response.ProductDetailResponse;
+import com.bff.application.model.dto.response.ProductResponse;
+import com.bff.application.model.dto.response.ResponseTemplate;
 import com.bff.application.service.ProductService;
-import jakarta.validation.Valid;
+import com.bff.application.utils.DateUtils;
+import com.bff.application.utils.ResponseUtils;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
+    private final ProductFacade productFacade;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> findAll(
+    public ResponseEntity<ResponseTemplate<List<ProductResponse>>> listProducts(
             @RequestParam(required = false) String name) {
-        List<ProductResponse> products = (name != null && !name.isBlank())
-                ? productService.findByName(name)
-                : productService.findAll();
-        return ResponseEntity.ok(ApiResponse.ok(products));
+        long start = System.nanoTime();
+        log.info("Receiving call for ProductController#listProducts: name={}", name);
+
+        productFacade.validateListParams(name);
+        List<ProductResponse> result = productService.listProducts(name);
+
+        log.info("Ending requisition for ProductController#listProducts: result={} items, timeSpent={}ms",
+                result.size(), DateUtils.elapsedMillis(start));
+        return ResponseUtils.ok(result);
+    }
+
+    @GetMapping("/paginated")
+    public ResponseEntity<ResponseTemplate<PaginatedResponse<ProductResponse>>> listProductsPaginated(
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @RequestParam(required = false) String name) {
+        long start = System.nanoTime();
+        log.info("Receiving call for ProductController#listProductsPaginated: page={}, size={}, name={}",
+                page, size, name);
+
+        productFacade.validatePaginatedParams(page, size, name);
+        PaginatedResponse<ProductResponse> result = productService.listProductsPaginated(page, size, name);
+
+        log.info("Ending requisition for ProductController#listProductsPaginated: result={} items (page {}/{}), timeSpent={}ms",
+                result.getTotalElements(), page, result.getTotalPages(), DateUtils.elapsedMillis(start));
+        return ResponseUtils.ok(result);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductResponse>> findById(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.ok(productService.findById(id)));
-    }
+    public ResponseEntity<ResponseTemplate<ProductDetailResponse>> getProductDetail(
+            @PathVariable Long id) {
+        long start = System.nanoTime();
+        log.info("Receiving call for ProductController#getProductDetail: id={}", id);
 
-    @PostMapping
-    public ResponseEntity<ApiResponse<ProductResponse>> create(
-            @Valid @RequestBody ProductRequest request) {
-        ProductResponse created = productService.create(request);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Product created successfully", created));
-    }
+        productFacade.validateDetailParams(id);
+        ProductDetailResponse result = productService.getProductDetail(id);
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductResponse>> update(
-            @PathVariable Long id,
-            @Valid @RequestBody ProductRequest request) {
-        return ResponseEntity.ok(ApiResponse.ok("Product updated successfully",
-                productService.update(id, request)));
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
-        productService.delete(id);
-        return ResponseEntity.ok(ApiResponse.ok("Product deleted successfully", null));
+        log.info("Ending requisition for ProductController#getProductDetail: result=name='{}', timeSpent={}ms",
+                result.getName(), DateUtils.elapsedMillis(start));
+        return ResponseUtils.ok(result);
     }
 
 }
+

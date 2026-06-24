@@ -1,10 +1,14 @@
 package com.bff.application.service;
 
-import com.bff.application.exception.ResourceNotFoundException;
-import com.bff.application.model.dto.ProductRequest;
-import com.bff.application.model.dto.ProductResponse;
-import com.bff.application.model.entity.Product;
-import com.bff.application.repository.ProductRepository;
+import com.bff.application.enums.ProductStatusEnum;
+import com.bff.application.exception.IntegrationException;
+import com.bff.application.integration.ProductIntegration;
+import com.bff.application.model.dto.integration.IntegrationProductResponse;
+import com.bff.application.model.dto.response.PaginatedResponse;
+import com.bff.application.model.dto.response.ProductDetailResponse;
+import com.bff.application.model.dto.response.ProductResponse;
+import com.bff.application.model.mapper.ProductMapper;
+import com.bff.application.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,123 +17,113 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
 
     @Mock
-    private ProductRepository productRepository;
+    private ProductIntegration productIntegration;
+
+    @Mock
+    private ProductMapper productMapper;
 
     @InjectMocks
-    private ProductService productService;
+    private ProductServiceImpl productService;
 
-    private Product product;
-    private ProductRequest productRequest;
+    private IntegrationProductResponse integrationResponse;
+    private ProductResponse productResponse;
+    private ProductDetailResponse productDetailResponse;
 
     @BeforeEach
     void setUp() {
-        product = Product.builder()
-                .id(1L)
-                .name("Test Product")
-                .description("Test Description")
-                .price(99.99)
+        integrationResponse = new IntegrationProductResponse(
+                1L, "Laptop Pro 15", "High-performance laptop", 2499.99,
+                "DONE", "2024-01-10T08:00:00", null);
+
+        productResponse = ProductResponse.builder()
+                .id(1L).name("Laptop Pro 15").price(2499.99).status(ProductStatusEnum.DONE)
                 .build();
 
-        productRequest = ProductRequest.builder()
-                .name("Test Product")
-                .description("Test Description")
-                .price(99.99)
+        productDetailResponse = ProductDetailResponse.builder()
+                .id(1L).name("Laptop Pro 15").description("High-performance laptop")
+                .price(2499.99).status(ProductStatusEnum.DONE).createdAt("2024-01-10T08:00:00")
                 .build();
     }
 
     @Test
-    void findAll_shouldReturnAllProducts() {
-        when(productRepository.findAll()).thenReturn(List.of(product));
+    void listProducts_shouldReturnMappedProducts() {
+        when(productIntegration.fetchProducts(null)).thenReturn(List.of(integrationResponse));
+        when(productMapper.toResponseList(List.of(integrationResponse))).thenReturn(List.of(productResponse));
 
-        List<ProductResponse> result = productService.findAll();
+        List<ProductResponse> result = productService.listProducts(null);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getName()).isEqualTo("Test Product");
-        verify(productRepository).findAll();
+        assertThat(result.get(0).getName()).isEqualTo("Laptop Pro 15");
+        verify(productIntegration).fetchProducts(null);
+        verify(productMapper).toResponseList(anyList());
     }
 
     @Test
-    void findById_shouldReturnProduct_whenExists() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+    void listProducts_withName_shouldPassNameToIntegration() {
+        when(productIntegration.fetchProducts("Laptop")).thenReturn(List.of(integrationResponse));
+        when(productMapper.toResponseList(anyList())).thenReturn(List.of(productResponse));
 
-        ProductResponse result = productService.findById(1L);
+        List<ProductResponse> result = productService.listProducts("Laptop");
+
+        assertThat(result).hasSize(1);
+        verify(productIntegration).fetchProducts("Laptop");
+    }
+
+    @Test
+    void listProducts_whenIntegrationFails_shouldPropagateException() {
+        when(productIntegration.fetchProducts(null))
+                .thenThrow(new IntegrationException("System 1 unavailable"));
+
+        assertThatThrownBy(() -> productService.listProducts(null))
+                .isInstanceOf(IntegrationException.class)
+                .hasMessageContaining("System 1 unavailable");
+    }
+
+    @Test
+    void listProductsPaginated_shouldReturnCorrectPage() {
+        List<ProductResponse> all = List.of(
+                ProductResponse.builder().id(1L).name("A").price(10.0).build(),
+                ProductResponse.builder().id(2L).name("B").price(20.0).build(),
+                ProductResponse.builder().id(3L).name("C").price(30.0).build());
+        when(productIntegration.fetchProducts(null)).thenReturn(List.of(integrationResponse, integrationResponse, integrationResponse));
+        when(productMapper.toResponseList(anyList())).thenReturn(all);
+
+        PaginatedResponse<ProductResponse> result = productService.listProductsPaginated(0, 2, null);
+
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getTotalElements()).isEqualTo(3);
+        assertThat(result.getTotalPages()).isEqualTo(2);
+        assertThat(result.isLast()).isFalse();
+    }
+
+    @Test
+    void getProductDetail_shouldReturnDetailResponse() {
+        when(productIntegration.fetchProductById(1L)).thenReturn(integrationResponse);
+        when(productMapper.toDetailResponse(integrationResponse)).thenReturn(productDetailResponse);
+
+        ProductDetailResponse result = productService.getProductDetail(1L);
 
         assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getName()).isEqualTo("Test Product");
+        assertThat(result.getDescription()).isEqualTo("High-performance laptop");
+        verify(productIntegration).fetchProductById(1L);
     }
 
     @Test
-    void findById_shouldThrow_whenNotFound() {
-        when(productRepository.findById(99L)).thenReturn(Optional.empty());
+    void getProductDetail_whenIntegrationFails_shouldPropagateException() {
+        when(productIntegration.fetchProductById(99L))
+                .thenThrow(new IntegrationException("Product not found"));
 
-        assertThatThrownBy(() -> productService.findById(99L))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("99");
-    }
-
-    @Test
-    void create_shouldPersistAndReturnProduct() {
-        when(productRepository.save(any(Product.class))).thenReturn(product);
-
-        ProductResponse result = productService.create(productRequest);
-
-        assertThat(result.getName()).isEqualTo("Test Product");
-        assertThat(result.getPrice()).isEqualTo(99.99);
-        verify(productRepository).save(any(Product.class));
-    }
-
-    @Test
-    void update_shouldUpdateAndReturnProduct() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(productRepository.save(any(Product.class))).thenReturn(product);
-
-        ProductRequest updateRequest = ProductRequest.builder()
-                .name("Updated Product")
-                .description("Updated Description")
-                .price(149.99)
-                .build();
-
-        ProductResponse result = productService.update(1L, updateRequest);
-
-        assertThat(result).isNotNull();
-        verify(productRepository).save(any(Product.class));
-    }
-
-    @Test
-    void update_shouldThrow_whenNotFound() {
-        when(productRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> productService.update(99L, productRequest))
-                .isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    @Test
-    void delete_shouldRemoveProduct_whenExists() {
-        when(productRepository.existsById(1L)).thenReturn(true);
-        doNothing().when(productRepository).deleteById(1L);
-
-        productService.delete(1L);
-
-        verify(productRepository).deleteById(1L);
-    }
-
-    @Test
-    void delete_shouldThrow_whenNotFound() {
-        when(productRepository.existsById(99L)).thenReturn(false);
-
-        assertThatThrownBy(() -> productService.delete(99L))
-                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> productService.getProductDetail(99L))
+                .isInstanceOf(IntegrationException.class);
     }
 
 }
