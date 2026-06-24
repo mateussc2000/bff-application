@@ -1,83 +1,141 @@
 # bff-application
 
-A **Backend for Frontend (BFF)** application built with **Java 21** and **Spring Boot 3.5**, following the **MVC (Model-View-Controller)** architecture pattern and prepared for deployment on **AWS ECS**.
+Backend for Frontend (**BFF**) application built with **Java 21** and **Spring Boot 3.5**.
 
-## Overview
+This service acts as an API layer tailored for frontend consumption, centralizing:
+- input validation
+- response standardization
+- orchestration with external systems (integration layer)
+- error handling and observability
 
-This project exposes REST endpoints to manage products with:
+---
 
-- Input validation
-- Standardized API responses
-- Exception handling
-- Health checks for observability
+## What is a BFF in this project?
 
-It is designed to be simple to run locally and containerize for cloud environments.
+In this repository, the BFF is the backend boundary designed for client applications (web/mobile), abstracting downstream integrations and exposing a frontend-friendly contract.
+
+Instead of frontend clients calling multiple backend systems directly, they call this BFF, which:
+- validates and normalizes request parameters
+- calls integration clients (via OpenFeign)
+- maps integration payloads to API response DTOs
+- returns consistent response envelopes
+
+---
 
 ## Tech Stack
 
 - **Java 21**
 - **Spring Boot 3.5**
-- **Spring Web MVC** (REST API)
-- **Spring Data JPA** (persistence)
-- **Spring Validation** (request validation)
-- **Spring Actuator** (health/metrics endpoints)
-- **H2** (in-memory database for development)
-- **Lombok**
+- **Spring Web MVC**
+- **Spring Cloud OpenFeign** (integration clients)
+- **Spring Validation**
+- **Spring Actuator**
 - **Maven**
-- **Docker**
+- **Lombok**
 
-## Project Structure (MVC)
+---
+
+## Current Architecture (high level)
 
 ```text
 src/main/java/com/bff/application/
-├── BffApplication.java          # Entry point
-├── controller/                  # REST controllers
-│   ├── HealthController.java
-│   └── ProductController.java
-├── service/                     # Business rules
-│   └── ProductService.java
-├── repository/                  # Data access
-│   └── ProductRepository.java
+├── BffApplication.java              # Spring Boot entrypoint + @EnableFeignClients
+├── controller/                      # HTTP endpoints
+├── facade/                          # Input validation / parameter normalization
 ├── model/
-│   ├── entity/                  # JPA entities
-│   │   └── Product.java
-│   └── dto/                     # Request/response DTOs
-│       ├── ApiResponse.java
-│       ├── ProductRequest.java
-│       └── ProductResponse.java
-├── exception/                   # Error handling
-│   ├── GlobalExceptionHandler.java
-│   └── ResourceNotFoundException.java
-└── config/                      # Application configuration
+│   ├── dto/
+│   │   ├── integration/             # External-system contracts
+│   │   └── response/                # BFF API response contracts
+│   └── mapper/                      # Integration DTO -> BFF response mapping
+├── exception/                       # Domain/system custom exceptions
+├── enums/                           # Error/status enums
+├── utils/                           # Shared utility helpers
+└── ... (other domain/service/integration packages)
 ```
+
+---
+
+## Request Flow
+
+Typical request lifecycle:
+
+1. **Controller** receives HTTP request.
+2. **Facade** validates and sanitizes query/path/body params.
+3. **Integration layer** calls downstream service(s) using Feign clients.
+4. **Mapper** converts integration DTOs into BFF response DTOs.
+5. **ResponseTemplate** wraps response in a consistent structure (`ok`, `data`, `error`).
+
+---
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/health` | Application health check |
-| GET | `/api/v1/products` | List products (optional `?name=` filter) |
-| GET | `/api/v1/products/{id}` | Get a product by ID |
-| POST | `/api/v1/products` | Create a product |
-| PUT | `/api/v1/products/{id}` | Update a product |
-| DELETE | `/api/v1/products/{id}` | Delete a product |
+### Health
+- `GET /api/v1/health` → basic service health response.
 
-Actuator health endpoint: `/actuator/health`
+### Product APIs
+- `GET /api/v1/products`
+- `GET /api/v1/products/{id}`
+- `POST /api/v1/products`
+- `PUT /api/v1/products/{id}`
+- `DELETE /api/v1/products/{id}`
+
+> Notes:
+> - Listing endpoints may support filters/pagination according to current controller contract.
+> - Actuator health endpoint is also available at: `GET /actuator/health`.
+
+---
+
+## Standard Response Envelope
+
+The project uses a common response template pattern:
+
+```json
+{
+  "ok": true,
+  "data": { ... },
+  "error": null
+}
+```
+
+Error responses follow the same envelope with `ok: false` and a populated `error` object.
+
+---
+
+## Integration Layer
+
+The integration layer is responsible for communication with external/downstream APIs and includes:
+
+- Feign clients configured by `@EnableFeignClients`
+- integration DTOs (`model.dto.integration`)
+- mapping and fallback/error propagation into BFF exceptions
+
+This ensures frontend consumers are isolated from downstream payload formats and transient integration concerns.
+
+---
+
+## Error Handling
+
+Custom exceptions and error codes are centralized (e.g., mapping, integration, validation, business, token, system errors), enabling:
+
+- predictable error payloads
+- easier tracing and observability
+- consistent status/error semantics across endpoints
+
+---
 
 ## Running Locally
 
 ### Prerequisites
+- Java 21+
+- Maven 3.9+
 
-- **Java 21+**
-- **Maven 3.9+**
-
-### Start application
+### Run
 
 ```bash
 mvn spring-boot:run
 ```
 
-Application URL: `http://localhost:8080`
+Default URL: `http://localhost:8080`
 
 ### Run tests
 
@@ -85,14 +143,16 @@ Application URL: `http://localhost:8080`
 mvn test
 ```
 
-### Build executable JAR
+### Build
 
 ```bash
 mvn clean package -DskipTests
 java -jar target/bff-application-0.0.1-SNAPSHOT.jar
 ```
 
-## Docker
+---
+
+## Containerization
 
 ### Build image
 
@@ -106,8 +166,11 @@ docker build -t bff-application .
 docker run -p 8080:8080 bff-application
 ```
 
-## AWS ECS Notes
+---
 
-The Docker image is built with a **multi-stage Dockerfile** and runs as a **non-root user**, which is aligned with common ECS security best practices.
+## Observability
 
-For production deployments, prefer externalized configuration (environment variables / secrets manager) and a persistent production-grade database.
+- Application health: `GET /api/v1/health`
+- Actuator health: `GET /actuator/health`
+
+For production, prefer externalized configuration (env vars/secrets) and hardened integration timeouts/retries/circuit-breaking as needed.
