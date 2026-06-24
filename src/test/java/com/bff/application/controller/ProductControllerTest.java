@@ -72,6 +72,7 @@ class ProductControllerTest {
 
     @Test
     void listProducts_withNameFilter_shouldPassNameToService() throws Exception {
+        when(productFacade.validateListParams("Laptop")).thenReturn("Laptop");
         when(productService.listProducts("Laptop")).thenReturn(List.of(productResponse));
 
         mockMvc.perform(get("/api/v1/products").param("name", "Laptop"))
@@ -83,8 +84,8 @@ class ProductControllerTest {
 
     @Test
     void listProducts_whenFacadeThrowsValidation_shouldReturn400() throws Exception {
-        doThrow(new ValidationException("'name' must not exceed 100 characters"))
-                .when(productFacade).validateListParams(any());
+        when(productFacade.validateListParams(any()))
+                .thenThrow(new ValidationException("'name' must not exceed 100 characters"));
 
         mockMvc.perform(get("/api/v1/products").param("name", "x".repeat(101)))
                 .andExpect(status().isBadRequest())
@@ -98,6 +99,8 @@ class ProductControllerTest {
                 .content(List.of(productResponse))
                 .page(0).size(10).totalElements(1).totalPages(1).last(true)
                 .build();
+        when(productFacade.validatePaginatedParams(0, 10, null))
+                .thenReturn(new ProductFacade.PaginatedParams(0, 10, null));
         when(productService.listProductsPaginated(0, 10, null)).thenReturn(paginated);
 
         mockMvc.perform(get("/api/v1/products/paginated"))
@@ -109,6 +112,7 @@ class ProductControllerTest {
 
     @Test
     void getProductDetail_shouldReturn200WithDetail() throws Exception {
+        when(productFacade.validateDetailParams(1L)).thenReturn(1L);
         when(productService.getProductDetail(1L)).thenReturn(productDetailResponse);
 
         mockMvc.perform(get("/api/v1/products/1"))

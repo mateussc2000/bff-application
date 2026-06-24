@@ -30,8 +30,8 @@ public class ProductController {
         long start = System.nanoTime();
         log.info("Receiving call for ProductController#listProducts: name={}", name);
 
-        productFacade.validateListParams(name);
-        List<ProductResponse> result = productService.listProducts(name);
+        String validatedName = productFacade.validateListParams(name);
+        List<ProductResponse> result = productService.listProducts(validatedName);
 
         log.info("Ending requisition for ProductController#listProducts: result={} items, timeSpent={}ms",
                 result.size(), DateUtils.elapsedMillis(start));
@@ -47,8 +47,11 @@ public class ProductController {
         log.info("Receiving call for ProductController#listProductsPaginated: page={}, size={}, name={}",
                 page, size, name);
 
-        productFacade.validatePaginatedParams(page, size, name);
-        PaginatedResponse<ProductResponse> result = productService.listProductsPaginated(page, size, name);
+        ProductFacade.PaginatedParams validatedParams = productFacade.validatePaginatedParams(page, size, name);
+        PaginatedResponse<ProductResponse> result = productService.listProductsPaginated(
+                validatedParams.page(),
+                validatedParams.size(),
+                validatedParams.name());
 
         log.info("Ending requisition for ProductController#listProductsPaginated: result={} items (page {}/{}), timeSpent={}ms",
                 result.getTotalElements(), page, result.getTotalPages(), DateUtils.elapsedMillis(start));
@@ -61,8 +64,8 @@ public class ProductController {
         long start = System.nanoTime();
         log.info("Receiving call for ProductController#getProductDetail: id={}", id);
 
-        productFacade.validateDetailParams(id);
-        ProductDetailResponse result = productService.getProductDetail(id);
+        Long validatedId = productFacade.validateDetailParams(id);
+        ProductDetailResponse result = productService.getProductDetail(validatedId);
 
         log.info("Ending requisition for ProductController#getProductDetail: result=name='{}', timeSpent={}ms",
                 result.getName(), DateUtils.elapsedMillis(start));
@@ -70,4 +73,3 @@ public class ProductController {
     }
 
 }
-

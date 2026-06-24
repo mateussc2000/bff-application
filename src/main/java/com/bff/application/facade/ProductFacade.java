@@ -1,6 +1,6 @@
 package com.bff.application.facade;
 
-import com.bff.application.exception.ValidationException;
+import com.bff.application.utils.Validation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -8,29 +8,25 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProductFacade {
 
-    public void validateListParams(String name) {
+    public String validateListParams(String name) {
         log.debug("ProductFacade#validateListParams: name={}", name);
-        if (name != null && name.length() > 100) {
-            throw new ValidationException("'name' filter must not exceed 100 characters");
-        }
+        return Validation.validateNameFilter(name);
     }
 
-    public void validatePaginatedParams(int page, int size, String name) {
+    public PaginatedParams validatePaginatedParams(int page, int size, String name) {
         log.debug("ProductFacade#validatePaginatedParams: page={}, size={}, name={}", page, size, name);
-        if (page < 0) {
-            throw new ValidationException("'page' must be >= 0, received: " + page);
-        }
-        if (size <= 0 || size > 100) {
-            throw new ValidationException("'size' must be between 1 and 100, received: " + size);
-        }
-        validateListParams(name);
+        return new PaginatedParams(
+                Validation.validatePage(page),
+                Validation.validateSize(size),
+                validateListParams(name));
     }
 
-    public void validateDetailParams(Long id) {
+    public Long validateDetailParams(Long id) {
         log.debug("ProductFacade#validateDetailParams: id={}", id);
-        if (id == null || id <= 0) {
-            throw new ValidationException("'id' must be a positive number, received: " + id);
-        }
+        return Validation.validateId(id);
+    }
+
+    public record PaginatedParams(int page, int size, String name) {
     }
 
 }
