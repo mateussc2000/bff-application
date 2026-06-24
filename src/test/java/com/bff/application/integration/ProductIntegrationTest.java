@@ -1,7 +1,7 @@
 package com.bff.application.integration;
 
-import com.bff.application.client.ProductFeignClient;
 import com.bff.application.exception.IntegrationException;
+import com.bff.application.integration.client.ProductFeignClient;
 import com.bff.application.integration.impl.ProductIntegrationImpl;
 import com.bff.application.model.dto.integration.IntegrationProductResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +15,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductIntegrationTest {

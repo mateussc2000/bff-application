@@ -1,4 +1,4 @@
-package com.bff.application.client.config;
+package com.bff.application.config.feign;
 
 import feign.RequestInterceptor;
 import org.springframework.beans.factory.annotation.Value;
@@ -6,14 +6,17 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class FeignClientConfig {
+public class InterceptorConfig {
 
     @Value("${integration.product-service.token}")
     private String authToken;
 
     @Bean
     public RequestInterceptor feignAuthInterceptor() {
-        return requestTemplate -> requestTemplate.header("Authorization", "Bearer " + authToken);
+        return requestTemplate -> requestTemplate.header(
+                ClientHeaders.AUTHORIZATION,
+                ClientHeaders.BEARER_PREFIX + authToken
+        );
     }
 
 }

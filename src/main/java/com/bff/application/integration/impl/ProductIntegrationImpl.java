@@ -1,8 +1,8 @@
 package com.bff.application.integration.impl;
 
-import com.bff.application.client.ProductFeignClient;
 import com.bff.application.exception.IntegrationException;
 import com.bff.application.integration.ProductIntegration;
+import com.bff.application.integration.client.ProductFeignClient;
 import com.bff.application.model.dto.integration.IntegrationProductResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

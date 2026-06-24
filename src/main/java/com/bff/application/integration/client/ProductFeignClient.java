@@ -1,6 +1,6 @@
-package com.bff.application.client;
+package com.bff.application.integration.client;
 
-import com.bff.application.client.config.FeignClientConfig;
+import com.bff.application.config.feign.InterceptorConfig;
 import com.bff.application.model.dto.integration.IntegrationProductResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,7 +12,7 @@ import java.util.List;
 @FeignClient(
         name = "product-service",
         url = "${integration.product-service.base-url}",
-        configuration = FeignClientConfig.class
+        configuration = InterceptorConfig.class
 )
 public interface ProductFeignClient {
 
