@@ -126,6 +126,7 @@ class ProductControllerTest {
 
     @Test
     void getProductDetail_whenNotFound_shouldReturn404() throws Exception {
+        when(productFacade.validateDetailParams(99L)).thenReturn(99L);
         when(productService.getProductDetail(99L))
                 .thenThrow(new NotFoundException("Product not found with id: 99"));
 
